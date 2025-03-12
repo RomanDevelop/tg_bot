@@ -5,6 +5,8 @@ import requests
 from bs4 import BeautifulSoup
 from aiogram import Bot
 from dotenv import load_dotenv
+from datetime import datetime
+import pytz
 
 # 🔹 Загружаем переменные из .env
 load_dotenv()
@@ -21,6 +23,9 @@ TARGET_CHANNEL_ID = int(TARGET_CHANNEL_ID)
 
 # 🔹 URL веб-версии Telegram канала UTEX
 TELEGRAM_URL = "https://t.me/s/utex_exchange"
+
+# 🔹 Часовой пояс Украины (UTC+2)
+UKRAINE_TZ = pytz.timezone("Europe/Kiev")
 
 bot = Bot(token=TOKEN)
 
@@ -53,19 +58,27 @@ def fetch_latest_posts():
         return []
 
 async def fetch_and_send():
-    """Получает новые посты с 'Trade' и отправляет в Telegram-канал."""
-    new_posts = fetch_latest_posts()
-    for post_id, text in new_posts:
-        message = f"📢 Новость из UTEX:\n{text}"
-        await bot.send_message(TARGET_CHANNEL_ID, message)
-        print(f"✅ Отправлено: {text[:50]}...")
+    """Получает новые посты с 'Trade' и отправляет в Telegram-канал (только в нужное время)."""
+    now = datetime.now(UKRAINE_TZ).time()  # Текущее время в Украине
+    start_time = datetime.strptime("12:00", "%H:%M").time()
+    end_time = datetime.strptime("22:00", "%H:%M").time()
+
+    if start_time <= now <= end_time:
+        print("✅ В рабочее время, проверяем посты...")
+        new_posts = fetch_latest_posts()
+        for post_id, text in new_posts:
+            message = f"📢 Новость из UTEX:\n{text}"
+            await bot.send_message(TARGET_CHANNEL_ID, message)
+            print(f"✅ Отправлено: {text[:50]}...")
+    else:
+        print("⏳ Вне рабочего времени, бот ждет следующего запуска.")
 
 async def main():
-    """Запускаем бесконечный цикл парсинга каждые 5 минут."""
+    """Запускаем бесконечный цикл парсинга каждые 30 минут с 12:00 до 22:00 (Украина)."""
     while True:
         await fetch_and_send()
-        print("🔄 Ожидание 5 минут перед следующей проверкой...")
-        await asyncio.sleep(300)  # Задержка 300 секунд (5 минут)
+        print("🔄 Ожидание 30 минут перед следующей проверкой...")
+        await asyncio.sleep(1800)  # Задержка 1800 секунд (30 минут)
 
 if __name__ == "__main__":
     asyncio.run(main())
