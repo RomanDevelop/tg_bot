@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import requests
+from bs4 import BeautifulSoup
 from aiogram import Bot
 from dotenv import load_dotenv
 
@@ -10,52 +11,57 @@ load_dotenv()
 
 TOKEN = os.getenv("BOT_TOKEN")  # Токен бота
 TARGET_CHANNEL_ID = os.getenv("TARGET_CHANNEL_ID")  # Канал, куда отправлять посты
-TGSTAT_API_KEY = os.getenv("TGSTAT_API_KEY")  # API-ключ TGStat
 
 if not TOKEN:
     raise ValueError("❌ Ошибка: BOT_TOKEN не найден в .env!")
 if not TARGET_CHANNEL_ID:
     raise ValueError("❌ Ошибка: TARGET_CHANNEL_ID не найден в .env!")
-if not TGSTAT_API_KEY:
-    raise ValueError("❌ Ошибка: TGSTAT_API_KEY не найден в .env!")
 
 TARGET_CHANNEL_ID = int(TARGET_CHANNEL_ID)
 
-# 🔹 ID канала UTEX
-CHANNEL_ID = "@utex_exchange"
-
-# 🔹 URL для получения постов через TGStat API
-TGSTAT_URL = f"https://api.tgstat.ru/channels/posts?channelId={CHANNEL_ID}&limit=10"
-HEADERS = {"Authorization": f"Bearer {TGSTAT_API_KEY}"}
+# 🔹 URL веб-версии Telegram канала UTEX
+TELEGRAM_URL = "https://t.me/s/utex_exchange"
 
 bot = Bot(token=TOKEN)
 
-# Храним ID уже отправленных постов, чтобы не дублировать
+# Храним уже отправленные посты, чтобы избежать дубликатов
 sent_messages = set()
 
+def fetch_latest_posts():
+    """Парсит веб-версию Telegram-канала и возвращает новые посты с 'Trade'."""
+    try:
+        response = requests.get(TELEGRAM_URL)
+        if response.status_code != 200:
+            print(f"❌ Ошибка при загрузке Telegram-страницы! Код: {response.status_code}")
+            return []
+        
+        soup = BeautifulSoup(response.text, "html.parser")
+        posts = soup.find_all("div", class_="tgme_widget_message_text")
+        
+        new_posts = []
+        for post in posts:
+            text = post.get_text()
+            if "Trade" in text or "trade" in text:
+                post_id = hash(text)  # Генерируем ID на основе текста поста
+                if post_id not in sent_messages:
+                    new_posts.append((post_id, text))
+                    sent_messages.add(post_id)
+        
+        return new_posts
+    except Exception as e:
+        print(f"🔥 Ошибка парсинга: {e}")
+        return []
+
 async def fetch_and_send():
-    """Проверяет новые посты и отправляет только с 'Trade'."""
-    response = requests.get(TGSTAT_URL, headers=HEADERS)
-    data = response.json()
-    
-    if "response" in data and "items" in data["response"]:
-        for post in data["response"]["items"]:
-            text = post["text"]
-            post_id = post["date"]  # Используем дату как уникальный ID поста
-            
-            if "Trade" in text or "trade" in text:  # Фильтр по слову
-                if post_id not in sent_messages:  # Проверяем, не отправляли ли этот пост ранее
-                    message = f"📢 Новость из UTEX:\n{text}"
-                    await bot.send_message(TARGET_CHANNEL_ID, message)
-                    sent_messages.add(post_id)  # Добавляем в список отправленных
-                    print(f"✅ Отправлено: {text[:50]}...")  
-            else:
-                print(f"⏩ Пропущено: {text[:50]}...")  
-    else:
-        print("❌ Ошибка при получении данных!")
+    """Получает новые посты с 'Trade' и отправляет в Telegram-канал."""
+    new_posts = fetch_latest_posts()
+    for post_id, text in new_posts:
+        message = f"📢 Новость из UTEX:\n{text}"
+        await bot.send_message(TARGET_CHANNEL_ID, message)
+        print(f"✅ Отправлено: {text[:50]}...")
 
 async def main():
-    """Запускаем цикл проверки новых постов каждые 5 минут."""
+    """Запускаем бесконечный цикл парсинга каждые 5 минут."""
     while True:
         await fetch_and_send()
         print("🔄 Ожидание 5 минут перед следующей проверкой...")
