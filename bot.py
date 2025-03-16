@@ -2,7 +2,8 @@ import asyncio
 import logging
 import os
 import sqlite3
-from aiogram import Bot, Dispatcher
+from aiogram import Bot, Dispatcher, types
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from telethon import TelegramClient, events
 from dotenv import load_dotenv
 
@@ -52,6 +53,8 @@ def save_message(message_id):
 async def handler(event):
     message = event.message
     text = message.text or ""
+    chat_id = message.chat_id
+    message_id = message.id
 
     if any(keyword.lower() in text.lower() for keyword in KEYWORDS):
         if not is_duplicate(message.id):
@@ -59,8 +62,21 @@ async def handler(event):
             logging.info(f"✅ Найдено ключевое слово в сообщении: {text[:50]}...")
             logging.info(f"📤 Попытка отправки сообщения в канал {CHANNEL_ID}...")
 
+            # 🔹 Создаём ссылку на оригинальный пост
+            original_post_url = f"https://t.me/c/{str(chat_id)[4:]}/{message_id}"  # Убираем "-100" из chat_id
+
+            # 🔹 Добавляем кнопку "Открыть оригинал"
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="📌 Открыть оригинал", url=original_post_url)]
+            ])
+
             try:
-                await bot.send_message(CHANNEL_ID, f"📢 Новость из канала:\n{text}", parse_mode="HTML")
+                await bot.send_message(
+                    CHANNEL_ID,
+                    f"📢 Новость из канала:\n{text}",
+                    parse_mode="HTML",
+                    reply_markup=keyboard  # 🔹 Добавляем кнопку
+                )
                 logging.info(f"✅ Сообщение успешно отправлено в канал {CHANNEL_ID}")
             except Exception as e:
                 logging.error(f"❌ Ошибка при отправке сообщения: {e}")
@@ -68,7 +84,7 @@ async def handler(event):
             # Если есть медиа, пересылаем
             if message.media:
                 try:
-                    await bot.send_file(CHANNEL_ID, message.media)
+                    await bot.send_file(CHANNEL_ID, message.media, caption="📌 Оригинальный пост:", reply_markup=keyboard)
                     logging.info(f"✅ Медиафайл отправлен в канал {CHANNEL_ID}")
                 except Exception as e:
                     logging.error(f"❌ Ошибка при отправке медиафайла: {e}")
