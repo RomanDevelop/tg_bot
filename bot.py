@@ -1,7 +1,7 @@
-import logging
-import sqlite3
-import os
 import asyncio
+import logging
+import os
+import sqlite3
 from aiogram import Bot, Dispatcher
 from telethon import TelegramClient, events
 from dotenv import load_dotenv
@@ -9,23 +9,25 @@ from dotenv import load_dotenv
 # 🔹 Загружаем переменные из .env
 load_dotenv()
 
-API_ID = int(os.getenv("API_ID"))  # API ID из my.telegram.org
-API_HASH = os.getenv("API_HASH")  # API HASH из my.telegram.org
-BOT_TOKEN = os.getenv("BOT_TOKEN")  # Токен Telegram-бота
+API_ID = int(os.getenv("API_ID"))
+API_HASH = os.getenv("API_HASH")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
 
-# 🔹 Читаем список ключевых слов и каналов из `.env`
-KEYWORDS = set(os.getenv("KEYWORDS", "").split(","))  # Разделяем по запятой
-MONITORED_CHANNELS = list(map(int, os.getenv("MONITORED_CHANNELS", "").split(",")))  # Преобразуем в int
+# 🔹 Список каналов для мониторинга (из .env)
+MONITORED_CHANNELS = list(map(int, os.getenv("MONITORED_CHANNELS").split(",")))
+
+# 🔹 Ключевые слова (из .env)
+KEYWORDS = os.getenv("KEYWORDS").split(",")
 
 # 🔹 Настройки бота
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
-# 🔹 Настройки Telethon
+# 🔹 Настройки Telethon (используем обычный Telegram-аккаунт)
 client = TelegramClient("my_bot_session", API_ID, API_HASH)
 
-# 🔹 Подключение к базе данных SQLite (сохраняем обработанные сообщения)
+# 🔹 Подключение к SQLite для хранения обработанных сообщений
 conn = sqlite3.connect("messages.db")
 c = conn.cursor()
 c.execute("""
@@ -35,35 +37,43 @@ c.execute("""
 """)
 conn.commit()
 
-# 🔹 Функция для проверки дубликатов
+# 🔹 Проверка дубликатов
 def is_duplicate(message_id):
     c.execute("SELECT 1 FROM processed_messages WHERE message_id = ?", (message_id,))
     return c.fetchone() is not None
 
-# 🔹 Функция для сохранения обработанных сообщений
+# 🔹 Сохранение обработанных сообщений
 def save_message(message_id):
     c.execute("INSERT INTO processed_messages (message_id) VALUES (?)", (message_id,))
     conn.commit()
 
-# 🔹 Обработчик новых сообщений в каналах
+# 🔹 Обработчик новых сообщений
 @client.on(events.NewMessage(chats=MONITORED_CHANNELS))
 async def handler(event):
     message = event.message
-    if message.text:
-        lower_text = message.text.lower()
-        if any(keyword.lower() in lower_text for keyword in KEYWORDS) and not is_duplicate(message.id):
-            save_message(message.id)
-            await bot.send_message(CHANNEL_ID, message.text, parse_mode="HTML")
+    text = message.text or ""
 
-            # Если есть медиа (фото, видео, документы), пересылаем их
+    if any(keyword.lower() in text.lower() for keyword in KEYWORDS):
+        if not is_duplicate(message.id):
+            save_message(message.id)
+            logging.info(f"✅ Найдено ключевое слово в сообщении: {text[:50]}...")
+            await bot.send_message(CHANNEL_ID, f"📢 Новость из канала:\n{text}", parse_mode="HTML")
+            
+            # Если есть медиа, пересылаем
             if message.media:
                 await bot.send_file(CHANNEL_ID, message.media)
 
 # 🔹 Функция запуска бота
-async def main():
-    await client.start()
-    await dp.start_polling(bot)
+async def run_bot():
+    while True:
+        try:
+            await client.start()  # Авторизация (в первый раз запросит код)
+            logging.info("✅ Бот успешно запущен!")
+            await dp.start_polling(bot)
+        except Exception as e:
+            logging.error(f"🔥 Ошибка: {e}")
+            await asyncio.sleep(5)  # Ожидание перед перезапуском
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    asyncio.run(main())
+    asyncio.run(run_bot())
