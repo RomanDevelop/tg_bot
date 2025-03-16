@@ -57,11 +57,21 @@ async def handler(event):
         if not is_duplicate(message.id):
             save_message(message.id)
             logging.info(f"✅ Найдено ключевое слово в сообщении: {text[:50]}...")
-            await bot.send_message(CHANNEL_ID, f"📢 Новость из канала:\n{text}", parse_mode="HTML")
-            
+            logging.info(f"📤 Попытка отправки сообщения в канал {CHANNEL_ID}...")
+
+            try:
+                await bot.send_message(CHANNEL_ID, f"📢 Новость из канала:\n{text}", parse_mode="HTML")
+                logging.info(f"✅ Сообщение успешно отправлено в канал {CHANNEL_ID}")
+            except Exception as e:
+                logging.error(f"❌ Ошибка при отправке сообщения: {e}")
+
             # Если есть медиа, пересылаем
             if message.media:
-                await bot.send_file(CHANNEL_ID, message.media)
+                try:
+                    await bot.send_file(CHANNEL_ID, message.media)
+                    logging.info(f"✅ Медиафайл отправлен в канал {CHANNEL_ID}")
+                except Exception as e:
+                    logging.error(f"❌ Ошибка при отправке медиафайла: {e}")
 
 # 🔹 Функция запуска бота
 async def run_bot():
