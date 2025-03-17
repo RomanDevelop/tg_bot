@@ -73,7 +73,7 @@ async def handler(event):
             try:
                 await bot.send_message(
                     CHANNEL_ID,
-                    f"📢 Новость из канала:\n{text}",
+                    f"📢 <b>Новость из канала</b>:\n{text}",
                     parse_mode="HTML",
                     reply_markup=keyboard  # 🔹 Добавляем кнопку
                 )
@@ -81,7 +81,7 @@ async def handler(event):
             except Exception as e:
                 logging.error(f"❌ Ошибка при отправке сообщения: {e}")
 
-            # Если есть медиа, пересылаем
+            # 🔹 Если есть медиа, пересылаем
             if message.media:
                 try:
                     await bot.send_file(CHANNEL_ID, message.media, caption="📌 Оригинальный пост:", reply_markup=keyboard)
