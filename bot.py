@@ -56,38 +56,50 @@ async def handler(event):
     chat_id = message.chat_id
     message_id = message.id
 
-    if any(keyword.lower() in text.lower() for keyword in KEYWORDS):
-        if not is_duplicate(message.id):
-            save_message(message.id)
-            logging.info(f"✅ Найдено ключевое слово в сообщении: {text[:50]}...")
-            logging.info(f"📤 Попытка отправки сообщения в канал {CHANNEL_ID}...")
+    # 🔹 Проверяем, содержит ли сообщение ключевое слово
+    contains_keyword = any(keyword.lower() in text.lower() for keyword in KEYWORDS)
 
-            # 🔹 Создаём ссылку на оригинальный пост
-            original_post_url = f"https://t.me/c/{str(chat_id)[4:]}/{message_id}"  # Убираем "-100" из chat_id
+    # 🔹 Проверяем, является ли сообщение аудиофайлом
+    is_audio = message.audio is not None
 
-            # 🔹 Добавляем кнопку "Открыть оригинал"
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="📌 Открыть оригинал", url=original_post_url)]
-            ])
+    # 🔹 Если нет ключевого слова и это не аудиофайл — пропускаем
+    if not contains_keyword and not is_audio:
+        return
 
-            try:
-                await bot.send_message(
-                    CHANNEL_ID,
-                    f"📢 <b>Новость из канала</b>:\n{text}",
-                    parse_mode="HTML",
-                    reply_markup=keyboard  # 🔹 Добавляем кнопку
-                )
-                logging.info(f"✅ Сообщение успешно отправлено в канал {CHANNEL_ID}")
-            except Exception as e:
-                logging.error(f"❌ Ошибка при отправке сообщения: {e}")
+    # 🔹 Проверяем, было ли уже обработано сообщение
+    if is_duplicate(message.id):
+        return
 
-            # 🔹 Если есть медиа, пересылаем
-            if message.media:
-                try:
-                    await bot.send_file(CHANNEL_ID, message.media, caption="📌 Оригинальный пост:", reply_markup=keyboard)
-                    logging.info(f"✅ Медиафайл отправлен в канал {CHANNEL_ID}")
-                except Exception as e:
-                    logging.error(f"❌ Ошибка при отправке медиафайла: {e}")
+    # 🔹 Сохраняем сообщение как обработанное
+    save_message(message.id)
+    logging.info(f"✅ Найдено нужное сообщение (ключевое слово или аудиофайл): {text[:50]}...")
+
+    # 🔹 Создаём ссылку на оригинальный пост
+    original_post_url = f"https://t.me/c/{str(chat_id)[4:]}/{message_id}"  # Убираем "-100" из chat_id
+
+    # 🔹 Добавляем кнопку "Открыть оригинал"
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📌 Открыть оригинал", url=original_post_url)]
+    ])
+
+    try:
+        # 🔹 Если есть текст, отправляем его
+        if text:
+            await bot.send_message(
+                CHANNEL_ID,
+                f"📢 Новость из канала:\n{text}",
+                parse_mode="HTML",
+                reply_markup=keyboard  # 🔹 Добавляем кнопку
+            )
+            logging.info(f"✅ Текстовое сообщение отправлено в канал {CHANNEL_ID}")
+
+        # 🔹 Если есть аудиофайл, отправляем его
+        if is_audio:
+            await bot.send_file(CHANNEL_ID, message.audio, caption="🎵 Аудиофайл:", reply_markup=keyboard)
+            logging.info(f"✅ Аудиофайл отправлен в канал {CHANNEL_ID}")
+
+    except Exception as e:
+        logging.error(f"❌ Ошибка при отправке сообщения: {e}")
 
 # 🔹 Функция запуска бота
 async def run_bot():
